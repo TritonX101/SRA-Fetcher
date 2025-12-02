@@ -75,29 +75,32 @@ You can run the tool directly from the command line using [SRA-Fetcher.py](/SRA-
 ### Examples:
 
 Basic usage (single thread):
-```SRA-Fetcher.py -f srr_list.txt```
+```SRA-Fetcher.py -f test/SRR_Test_list.txt```
 
 Save output to a specific directory and use 3 threads:
-```SRA-Fetcher.py -f srr_list.txt -o ./reports/ -t 3```
+```SRA-Fetcher.py -f test/SRR_Test_list.txt -o test/SRR_Result.csv -t 3```
 
 Output using detailed mode：
-```SRA-Fetcher.py -f srr_list.txt -d```
+```SRA-Fetcher.py -f test/SRR_Test_list.txt -d```
 
 Use an API key from env (The program will automatically read the NCBI_API_KEY from environment variables.):
 
     $bash
+    # Set NCBI_API_KEY in the environment variables
     conda env config vars set NCBI_API_KEY=[YOUR NCBI API KEY]
-    conda deactivate
+
+    # To make your changes take effect please reactivate your environment
+    conda deactivate  
     conda activate [YOUR CONDA ENVIRONMENT]
-    SRA-Fetcher.py -f srr_list.txt -d -o ./reports/
 
-    Or just use
+    # The program will automatically read the NCBI_API_KEY from environment variables. 
+    SRA-Fetcher.py -f test/SRR_Test_list.txt
 
-    $bash
-    SRA-Fetcher.py -f srr_list.txt -a [YOUR NCBI API KEY]
+    # If you don’t want to set it in the environment variables, you can use:
+    SRA-Fetcher.py -f test/SRR_Test_list.txt -a [YOUR NCBI API KEY]
 
 Overwrite existing output and run quietly:
-```SRA-Fetcher.py -f srr_list.txt -o ./reports/report.csv -r -q```
+```SRA-Fetcher.py -f test/SRR_Test_list.txt -r -q```
 
 
 
