@@ -1,4 +1,4 @@
-name: sra_getinfo
+name: SRA-Fetcher
 channels:
   - bioconda
   - conda-forge
