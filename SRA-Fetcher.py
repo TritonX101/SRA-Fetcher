@@ -19,16 +19,17 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 
 # =========================
-# 线程安全速率限制器
+# Rate limiter (thread lock)
 # =========================
 class RateLimiter:
     """
-    线程安全速率限制器，确保请求间隔至少为指定的最小间隔时间。
+    Thread-safe rate limiter that ensures requests are spaced by at least
+    a specified minimum interval.
     """
     def __init__(self, min_interval: float = 1.0):
         """
-        参数:
-            min_interval: 最小请求间隔时间，每个请求之间至少等待该时间（秒）
+        Parameters:
+            min_interval: Minimum interval between requests (seconds).
         """
         self.min_interval = min_interval
         self.last_request_time = 0
@@ -36,8 +37,8 @@ class RateLimiter:
     
     def acquire(self):
         """
-        等待直到可以进行下一个请求。
-        保证相邻请求间隔至少为 min_interval 秒。
+        Wait until the next request is allowed. Guarantees that adjacent
+        requests are at least min_interval seconds apart.
         """
         with self.lock:
             elapsed = time.time() - self.last_request_time
@@ -47,29 +48,30 @@ class RateLimiter:
 
 
 # =========================
-# 文件处理函数
+# File handling helpers
 # =========================
 def get_safe_output_path(file_path: str, replace_mode: bool = False) -> str:
     """
-    获取安全的输出文件路径。
-    若文件已存在：
-    - 替换模式 (replace_mode=True)：返回原路径（覆盖）
-    - 保留模式 (replace_mode=False)：添加时间戳后缀
-    
-    参数:
-        file_path: 目标文件路径
-        replace_mode: 是否启用替换模式
-    
-    返回:
-        安全的输出文件路径
+    Return a safe output path for writing files.
+
+    If a file already exists:
+    - replace_mode=True: return the original path (will overwrite)
+    - replace_mode=False: append a timestamp suffix to create a unique name
+
+    Parameters:
+        file_path: target file path
+        replace_mode: whether to allow replacing existing files
+
+    Returns:
+        A safe file path for output
     """
     if replace_mode or not os.path.exists(file_path):
         return file_path
     
-    # 文件存在且非替换模式，添加时间戳后缀
+    # File exists and replace mode is disabled; append a timestamp suffix
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     
-    # 分离文件名和扩展名
+    # Split filename and extension
     base_path = file_path
     if "." in os.path.basename(file_path):
         base_path, ext = file_path.rsplit(".", 1)
@@ -81,33 +83,34 @@ def get_safe_output_path(file_path: str, replace_mode: bool = False) -> str:
 
 
 # =========================
-# API验证函数
+# API validation helpers
 # =========================
 def validate_ncbi_api_key(api_key: str, timeout: int = 8) -> Tuple[bool, str]:
     """
-    验证 NCBI API 密钥的正确性。
+    Validate an NCBI API key.
 
-    参数:
-        api_key (str): 要验证的 API 密钥。
-        timeout (int): 网络请求超时时间，默认为 8 秒。
+    Parameters:
+        api_key (str): API key to validate.
+        timeout (int): network request timeout in seconds (default: 8)
 
-    返回:
-        Tuple[bool, str]: 验证结果和消息。
+    Returns:
+        Tuple[bool, str]: A tuple (is_valid, message) where is_valid is a
+        boolean and message explains the outcome.
     """
 
-    # 格式检查：空 / None
+    # Format checks: empty / None
     if not api_key or not isinstance(api_key, str):
-        return False, "API 密钥为空或不是字符串。"
+        return False, "API key is empty or not a string."
 
-    # 长度检查
+    # Length check
     if not (30 <= len(api_key) <= 60):
-        return False, f"API 密钥长度 ({len(api_key)}) 异常。"
+        return False, f"API key length ({len(api_key)}) is invalid."
 
-    # 字符合法性检查
+    # Character validity check
     if not re.fullmatch(r"[A-Za-z0-9\-]+", api_key):
-        return False, "API 密钥包含非法字符。"
+        return False, "API key contains invalid characters."
 
-    # 发送验证请求
+    # Send validation request
     url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
     params = {"db": "sra", "term": "SRP000001", "retmode": "json", "api_key": api_key}
 
@@ -115,25 +118,25 @@ def validate_ncbi_api_key(api_key: str, timeout: int = 8) -> Tuple[bool, str]:
         r = requests.get(url, params=params, timeout=timeout)
         r.raise_for_status()
     except requests.exceptions.RequestException as e:
-        return False, f"网络错误: {str(e)}"
+        return False, f"Network error: {str(e)}"
 
-    # 判断返回的 JSON 是否包含 error 字段
+    # Check whether returned JSON contains an 'error' field
     try:
         j = r.json()
     except Exception:
-        return False, "API 返回非 JSON 格式响应。"
+        return False, "API returned a non-JSON response."
 
     if "error" in j:
-        message = j.get("error", "未知错误")
-        return False, f"NCBI 拒绝了 API 密钥: {message}"
+        message = j.get("error", "unknown error")
+        return False, f"NCBI rejected API key: {message}"
 
-    return True, "API 密钥有效。"
+    return True, "API key is valid."
 
 
 # =========================
-# 使用 pysradb Python API 获取 metadata
+# Fetch metadata using the pysradb Python API
 # =========================
-# 全局速率限制器实例（所有线程共享）
+# Global rate limiter instance (shared across threads)
 _rate_limiter = RateLimiter(min_interval=1.0)
 
 def run_pysradb_get_srr_metadata(
@@ -144,35 +147,35 @@ def run_pysradb_get_srr_metadata(
     base_sleep: float = 1.0,
 ):
     """
-    使用 pysradb 的 Python API 获取单个 SRR 的 metadata，
-    对网络/SSL 错误做多次重试。
+    Use the pysradb Python API to retrieve metadata for a single SRR.
+    Retries on network/SSL errors.
 
-    参数:
-        srr: SRR 编号
-        detailed: 是否获取详细元数据
+    Parameters:
+        srr: SRR accession
+        detailed: whether to retrieve detailed metadata
         api_key: NCBI API Key
-        max_retries: 最大重试次数（默认 4）
-        base_sleep: 基础睡眠时间，单位秒（默认 1.0）
+        max_retries: maximum number of retries (default: 4)
+        base_sleep: base sleep time in seconds for backoff (default: 1.0)
 
-    返回:
+    Returns:
         (df, error_msg)
-        成功时 df 为 pandas.DataFrame，error_msg 为 None
-        失败时 df 为 None，error_msg 为错误描述
+        If successful, df is a pandas.DataFrame and error_msg is None.
+        If failed, df is None and error_msg contains a description.
     """
     try:
         client = SRAweb(api_key=api_key)
     except Exception as e:
-        return None, f"[ERROR] 初始化 SRAweb 失败: {e}"
+        return None, f"[ERROR] Failed to initialize SRAweb: {e}"
 
     for attempt in range(1, max_retries + 1):
         try:
-            # 应用速率限制：确保请求间隔至少 1 秒
+            # Apply rate limiting: ensure requests are spaced by at least the configured interval
             _rate_limiter.acquire()
             
             df = client.sra_metadata(srr, detailed=detailed)
 
             if df is None or df.empty:
-                return None, f"[WARNING] pysradb 未返回 {srr} 的任何元数据"
+                return None, f"[WARNING] pysradb returned no metadata for {srr}"
 
             return df.copy(), None
 
@@ -181,30 +184,30 @@ def run_pysradb_get_srr_metadata(
             requests.exceptions.ConnectionError,
             requests.exceptions.Timeout,
         ) as e:
-            # 网络类错误：重试
+            # Network errors: retry
             if attempt < max_retries:
-                sleep_t = base_sleep * (2 ** (attempt - 1))  # 指数退避
+                sleep_t = base_sleep * (2 ** (attempt - 1))  # exponential backoff
                 time.sleep(sleep_t)
             else:
-                return None, f"[ERROR] 网络/SSL错误: {e}"  # 最后重试依然失败
+                return None, f"[ERROR] Network/SSL error: {e}"  # final retry failed
 
         except requests.exceptions.RequestException as e:
-            # 其他请求层错误
-            return None, f"[ERROR] 请求错误: {e}"  # 其他请求层错误
+            # Other request-layer errors
+            return None, f"[ERROR] Request error: {e}"  # other request-layer errors
         except Exception as e:
-            # 非网络类异常（比如 pysradb 内部bug）直接返回
-            return None, f"[ERROR] pysradb.sra_metadata 调用失败: {e}"
+            # Non-network exceptions (e.g., pysradb internal errors): return immediately
+            return None, f"[ERROR] pysradb.sra_metadata call failed: {e}"
 
-    return None, f"[ERROR] 未知错误，已尝试 {max_retries} 次重试"
+    return None, f"[ERROR] Unknown error after {max_retries} retries"
 
 
 # =========================
-# 解析 pysradb TSV 输出
+# Parse pysradb TSV output
 # =========================
 def parse_pysradb_output(stdout: str):
     """
-    解析 pysradb 的 TSV 输出
-    返回: (header_list, data_rows_list)
+    Parse the TSV output from pysradb.
+    Returns: (header_list, data_rows_list)
     """
     lines = stdout.splitlines()
     if not lines:
@@ -221,7 +224,7 @@ def parse_pysradb_output(stdout: str):
 
 
 # =========================
-# 主处理逻辑
+# Main processing logic
 # =========================
 def process_srr_file(
     file_path,
@@ -234,108 +237,109 @@ def process_srr_file(
     replace_mode=False,
 ):
     """
-    API 接口：处理包含 SRR 编号的文件并导出 CSV。
-    参数:
-        file_path: 输入文件路径，包含 SRR 编号列表，直接对接 GEO 下载的 Accession List
-        output_path: 输出路径，可以是文件夹(使用默认文件名) 或 具体的 .csv 文件路径，默认与输入文件同目录
-        verbose: 是否输出调试信息
-        quiet: 是否静默模式（仅输出错误）
-        threads: 并发线程数
-        detailed: 是否获取详细元数据
+    Main API: process a file containing SRR accession IDs and export a CSV.
+
+    Parameters:
+        file_path: path to an input file containing SRR accessions (e.g., GEO Accession List)
+        output_path: output path or directory (defaults to input file directory if None)
+        verbose: enable detailed debug output
+        quiet: quiet mode (only show errors)
+        threads: number of concurrent threads to use
+        detailed: retrieve detailed metadata
         api_key: NCBI API Key
-        replace_mode: 是否启用替换模式（True=覆盖同名文件，False=添加时间戳后缀）
+        replace_mode: whether to overwrite existing output files (True to overwrite)
     """
 
-    # 路径与环境准备
+    # Path and environment preparation
     if not os.path.exists(file_path):
-        error_msg = f"[ERROR] 找不到输入文件 {file_path}，请检查路径是否正确。"
+        error_msg = f"[ERROR] Input file not found: {file_path}. Please check the path."
         typer.secho(error_msg, fg=typer.colors.RED, err=True)
         return None
 
-    # 输出路径检测
+    # Validate output path
     if output_path:
-        # 转换为字符串以防传入的是 Path 对象
+        # Convert to string to handle Path objects
         out_str = str(output_path)
 
-        # 当指定了具体的 .csv 文件名，获取文件名称并以此保存
+        # When a specific .csv file is provided, use it
         if out_str.lower().endswith(".csv"):
             output_csv = out_str
-            # 获取该文件的父目录，以便创建
+            # Derive parent directory to ensure it exists
             target_dir = os.path.dirname(os.path.abspath(output_csv))
         
-        # 当只指定了输出目录 
+        # When only an output directory is provided
         else:
             target_dir = out_str
             output_csv = os.path.join(target_dir, "SRR_info.csv")
         
-        # 尝试创建目标文件夹
+        # Try to create the target directory
         if target_dir and not os.path.exists(target_dir):
             try:
                 os.makedirs(target_dir, exist_ok=True)
             except OSError as e:
                 typer.secho(
-                    f"[ERROR] 无法创建输出目录 {target_dir}: {e}",
+                    f"[ERROR] Unable to create output directory {target_dir}: {e}",
                     fg=typer.colors.RED,
                     err=True,
                 )
                 return None
     else:
-        # 若没有传递参数，默认保存在输入文件同级目录
+        # If no output path is provided, default to input file directory
         target_dir = os.path.dirname(os.path.abspath(file_path))
         output_csv = os.path.join(target_dir, "SRR_info.csv")
 
-    # 处理文件冲突：若同名文件存在，根据模式决定是否添加时间戳后缀
+    # Handle output file conflicts by renaming unless overwrite/replace is enabled
     original_output_csv = output_csv
     output_csv = get_safe_output_path(output_csv, replace_mode=replace_mode)
     if not quiet and output_csv != original_output_csv:
         typer.secho(
-            f"[INFO] 同名文件已存在，输出文件已更名为: {os.path.basename(output_csv)}",
+            f"[INFO] A file with the same name exists. Output has been renamed to: {os.path.basename(output_csv)}",
             fg=typer.colors.CYAN,
         )
 
-    # 读取输入
+    # Read input
     srr_list = []
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             for line in f:
-                srr = line.strip()  # 去除首尾空白字符
+                srr = line.strip()  # strip leading/trailing whitespace
                 if srr:
                     srr_list.append(srr)
     except Exception as e:
-        typer.secho(f"[ERROR] 读取文件失败: {e}", fg=typer.colors.RED, err=True)
+        typer.secho(f"[ERROR] Failed to read input file: {e}", fg=typer.colors.RED, err=True)
         return None
 
     if not srr_list:
         if not quiet:
             typer.secho(
-                "[WARNING] 输入文件为空或没有有效的 SRR 编号。", fg=typer.colors.YELLOW
+                "[WARNING] Input file is empty or contains no valid SRR entries.", fg=typer.colors.YELLOW
             )
         return None
 
-    # 建一个 SRR 原始顺序索引的映射用于排序
+    # Build mapping of SRR -> original order for stable sorting
     srr_order = {srr: idx for idx, srr in enumerate(srr_list)}
 
     stats = {"total": len(srr_list), "success": 0, "fail": 0}
 
-    dfs = []  # 用来存每个 SRR 对应的 DataFrame
+    dfs = []  # store DataFrames for each SRR
 
-    # 在开始多线程处理之前，根据传入的 api_key 动态调整限速器
+    # Before starting multithreaded processing, adjust the rate limiter based on provided api_key
     if api_key:
-        # 有 Key：允许每秒 10 次请求，间隔 0.12 秒
+        # With a key: allow ~10 requests/sec (interval ~0.12s)
         _rate_limiter.min_interval = 0.12
     else:
-        # 无 Key：允许每秒 3 次请求，间隔 0.34 秒
+        # Without a key: allow ~3 requests/sec (interval ~0.34s)
         _rate_limiter.min_interval = 0.34
     
-    # 如果没有 API Key，强制限制线程数，防止过多线程空转
+    # If no API Key is present, limit the number of threads to avoid wasted threads
     if not api_key and threads > 3:
         if not quiet:
-            typer.secho("[INFO] 未检测到 API Key，线程数已限制为 3 。", fg=typer.colors.YELLOW)
+            typer.secho("[INFO] No API Key detected; threads limited to 3.", fg=typer.colors.YELLOW)
         threads = 3
 
     max_workers = threads if threads > 0 else 1
     if not quiet:
-        typer.secho(f"[INFO] 开始处理，使用线程数: {max_workers}")
+        typer.secho(f"[INFO] Starting processing; using thread count: {max_workers}")
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -347,7 +351,7 @@ def process_srr_file(
             }
 
             if quiet:
-                # 静默模式：不显示进度条
+                # Quiet mode: do not show the progress bar
                 for i, future in enumerate(
                     concurrent.futures.as_completed(future_to_srr)
                 ):
@@ -384,7 +388,7 @@ def process_srr_file(
                         )
                         dfs.append(placeholder)
             else:
-                # 使用进度条显示
+                # Show a progress bar
                 with Progress(
                     SpinnerColumn(),
                     TextColumn("[progress.description]{task.description}"),
@@ -394,10 +398,10 @@ def process_srr_file(
                     transient=True,
                 ) as progress:
                     task = progress.add_task(
-                        "[cyan]正在处理数据...", total=stats["total"]
+                        "[cyan]Processing data...", total=stats["total"]
                     )
 
-                    # 处理结果
+                    # Process results
                     for i, future in enumerate(
                         concurrent.futures.as_completed(future_to_srr)
                     ):
@@ -415,13 +419,13 @@ def process_srr_file(
                                 if not quiet:
                                     typer.echo()
                                 
-                                # 输出警告信息
+                                # Output warning message
                                 typer.secho(
-                                    f"[WARNING] 处理 {srr} 失败: {error_msg}",
+                                    f"[WARNING] Failed to process {srr}: {error_msg}",
                                     fg=typer.colors.YELLOW,
                                 )
 
-                                # 错误占位行，防止不知道哪个 SRR 失败
+                                # Placeholder row for failed SRR to keep alignment
                                 placeholder = pd.DataFrame(
                                     {
                                         "run_accession": [srr],
@@ -437,18 +441,18 @@ def process_srr_file(
                         except Exception as e:
                             stats["fail"] += 1
 
-                            # 输出空白行，防止进度条bug
+                            # Print a blank line to avoid progress bar artifacts
                             if not quiet:
                                 typer.echo()
                             
-                            # 输出报错信息
+                            # Output error message
                             typer.secho(
-                                f"[ERROR] 处理 {srr} 时发生异常: {e}",
+                                f"[ERROR] Exception while processing {srr}: {e}",
                                 fg=typer.colors.RED,
                                 err=True,
                             )
 
-                            # 错误占位行
+                            # Error placeholder row
                             placeholder = pd.DataFrame(
                                 {
                                     "run_accession": [srr],
@@ -462,7 +466,7 @@ def process_srr_file(
                             progress.update(task, advance=1)
 
     except KeyboardInterrupt:
-        typer.secho("\n[ERROR] 用户中断操作。", fg=typer.colors.RED, err=True)
+        typer.secho("\n[ERROR] Operation interrupted by user.", fg=typer.colors.RED, err=True)
         return None
 
     if not quiet and not verbose:
@@ -471,64 +475,66 @@ def process_srr_file(
     if not dfs:
         if not quiet:
             typer.secho(
-                "[WARNING] 未获取到任何结果，未生成 CSV。", fg=typer.colors.YELLOW
+                "[WARNING] No results were obtained; no CSV generated.", fg=typer.colors.YELLOW
             )
         return None
 
-    # 合并所有 DataFrame
+    # Merge all DataFrames
     merged = pd.concat(dfs, axis=0, join="outer", ignore_index=True)
 
-    # 按原始 SRR 列表顺序排序；同一个 SRR 有多行则保持原有顺序
+    # Sort by the original SRR list order; keep original order for identical SRR rows
     sort_cols = ["__input_order__"]
 
-    # 按 run_accession 排一下，输出更整齐
+    # Sort by run_accession to tidy output
     if "run_accession" in merged.columns:
         sort_cols.append("run_accession")
 
-    # 使用稳定
+    # Use a stable sort
     merged = merged.sort_values(sort_cols, kind="mergesort").reset_index(drop=True)
 
-    # 删掉内部使用的排序列
+    # Remove internal sort helper column
     merged = merged.drop(columns=["__input_order__"], errors="ignore")
 
-    # 写 CSV
+    # Write CSV
     try:
         merged.to_csv(output_csv, index=False)
     except IOError as e:
-        typer.secho(f"[ERROR] 写入 CSV 文件失败: {e}", fg=typer.colors.RED, err=True)
+        typer.secho(f"[ERROR] Failed to write CSV file: {e}", fg=typer.colors.RED, err=True)
         return None
     if not quiet:
         typer.echo()
     if verbose:
         typer.echo("=" * 60)
-        typer.echo("调试信息 (Debug Info):")
-        typer.echo(f"模式          : {'Detailed' if detailed else 'Basic'}")
-        typer.echo(f"API Key       : {'已启用' if api_key else '未启用'}")
-        typer.echo(f"总 SRR 编号数 : {stats['total']}")
-        typer.echo(f"匹配成功数    : {stats['success']}")
-        typer.echo(f"匹配失败数    : {stats['fail']}")
-        typer.echo(f"线程数        : {max_workers}")
-        typer.echo(f"输出文件路径  : {output_csv}")
+        typer.echo("Debug information:")
+        typer.echo(f"Mode           : {'Detailed' if detailed else 'Basic'}")
+        typer.echo(f"API Key        : {'Enabled' if api_key else 'Disabled'}")
+        typer.echo(f"Total SRR count: {stats['total']}")
+        typer.echo(f"Successful     : {stats['success']}")
+        typer.echo(f"Failed         : {stats['fail']}")
+        typer.echo(f"Threads        : {max_workers}")
+        typer.echo(f"Output file    : {output_csv}")
         typer.echo("=" * 60)
     elif not quiet:
-        typer.secho(f"处理完成，结果已保存到: {output_csv}")
+        typer.secho(f"Processing complete. Results saved to: {output_csv}")
 
     return output_csv
 
 
 # =========================
-# 环境变量初始化函数
+# Environment variable initialization helper
 # =========================
 def setup_ncbi_api_key(
     cli_apikey: Optional[str] = None, quiet: bool = False
 ) -> Optional[str]:
     """
-    初始化 NCBI API Key：
-    若提供了命令行 apikey，优先验证该 key；
-    若命令行 key 验证失败或未提供，则尝试读取并验证环境变量 NCBI_API_KEY；
-    若两者都未通过验证，则返回 None（限速模式）。
+    Initialize and validate the NCBI API Key.
+
+    If an API key is provided on the command line, validate it first.
+    If the command-line key fails or is not provided, check and validate the
+    NCBI_API_KEY environment variable.
+    If neither validates, return None and operate in rate-limited mode.
     """
-    # 首先尝试命令行传入的 apikey
+    # First try API key passed via command-line
     if cli_apikey:
         if not quiet:
             masked = (
@@ -536,8 +542,8 @@ def setup_ncbi_api_key(
                 if len(cli_apikey) > 12
                 else cli_apikey
             )
-            typer.secho(f"[INFO] 检测到命令行传入 API Key: {masked}")
-            typer.secho("[INFO] 正在验证命令行 API 密钥...")
+            typer.secho(f"[INFO] Detected command-line API Key: {masked}")
+            typer.secho("[INFO] Validating command-line API key...")
         is_valid, message = validate_ncbi_api_key(cli_apikey)
         if is_valid:
             if not quiet:
@@ -545,12 +551,12 @@ def setup_ncbi_api_key(
             return cli_apikey
         else:
             typer.secho(
-                f"[WARNING] 命令行 API 密钥验证失败: {message}",
+                f"[WARNING] Command-line API key validation failed: {message}",
                 fg=typer.colors.YELLOW,
                 err=True,
             )
 
-    # 尝试寻找环境变量中的API Key
+    # Next, try to find the API Key in environment variables
     ncbi_api_key = os.environ.get("NCBI_API_KEY")
     if ncbi_api_key:
         if not quiet:
@@ -559,8 +565,8 @@ def setup_ncbi_api_key(
                 if len(ncbi_api_key) > 12
                 else ncbi_api_key
             )
-            typer.secho(f"[INFO] 检测到环境变量 NCBI_API_KEY: {masked}")
-            typer.secho("[INFO] 正在验证环境变量 NCBI API 密钥...")
+            typer.secho(f"[INFO] Detected environment variable NCBI_API_KEY: {masked}")
+            typer.secho("[INFO] Validating environment variable NCBI_API key...")
         is_valid, message = validate_ncbi_api_key(ncbi_api_key)
         if is_valid:
             if not quiet:
@@ -568,18 +574,18 @@ def setup_ncbi_api_key(
             return ncbi_api_key
         else:
             typer.secho(
-                f"[WARNING] 环境变量 NCBI_API_KEY 验证失败: {message}",
+                f"[WARNING] Environment variable NCBI_API_KEY validation failed: {message}",
                 fg=typer.colors.YELLOW,
                 err=True,
             )
     else:
         if not quiet:
-            typer.secho("[INFO] 未检测到环境变量 NCBI_API_KEY。", err=True)
+            typer.secho("[INFO] No environment variable NCBI_API_KEY detected.", err=True)
 
-    # API获取失败，启用限速模式
+    # No valid API key found; operate in rate-limited mode
     if not quiet:
         typer.secho(
-            "[WARNING] 未找到有效的 NCBI API Key，将以限速模式运行。",
+            "[WARNING] No valid NCBI API Key found; running in rate-limited mode.",
             fg=typer.colors.YELLOW,
             err=True,
         )
@@ -587,14 +593,14 @@ def setup_ncbi_api_key(
 
 
 # =========================
-# CLI 入口
+# CLI entrypoint
 # =========================
 def cli(
     file: Path = typer.Option(
         ...,
         "--file",
         "-f",
-        help="SRR 编号列表文件路径 [可对应 GEO 下载的 Accession List]",
+        help="Path to SRR accession list file (e.g., GEO Accession List)",
         exists=True,
         file_okay=True,
         dir_okay=False,
@@ -604,7 +610,7 @@ def cli(
         None,
         "--output",
         "-o",
-        help="输出路径：默认输出在输入文件同级目录",
+        help="Output path or directory (defaults to input file directory)",
         file_okay=True,
         dir_okay=True,
         writable=True,
@@ -613,35 +619,35 @@ def cli(
         1,
         "--threads",
         "-t",
-        help="并发线程数",
+        help="Number of concurrent threads",
     ),
     detailed: bool = typer.Option(
         False,
         "--detailed",
         "-d",
-        help="获取包括下载地址在内的详细元数据[部分 SRR编号 返回的信息存在格式不正确情况]",
+        help="Fetch detailed metadata including download URLs (some entries may return malformed fields)",
     ),
     apikey: Optional[str] = typer.Option(
         None, "--api", "-a", help="NCBI API Key"
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="输出详细调试信息"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="静默模式 [仅输出报错]"),
-    replace: bool = typer.Option(False, "--replace", "-r", help="启用替换模式 [直接覆盖同名文件]"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose debug output"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Quiet mode (only show errors)"),
+    replace: bool = typer.Option(False, "--replace", "-r", help="Enable replace mode (overwrite existing files)"),
 ):
     """
-    根据 SRR 编号列表调用 pysradb 获取信息并导出 CSV。
+    Retrieve information using pysradb for a list of SRR accessions and export to CSV.
     """
     if verbose and quiet:
-        typer.secho("错误: --verbose 和 --quiet 不能同时使用。", fg=typer.colors.RED)
+        typer.secho("Error: --verbose and --quiet cannot be used together.", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    # 初始化 & 验证 API Key（先 CLI 再环境变量，都失败返回 None）
+    # Initialize & validate API Key (check CLI first, then environment; return None if none valid)
     final_api_key = setup_ncbi_api_key(apikey, quiet=quiet)
 
-    # 根据是否有 API Key 来限制线程数
+    # Limit the maximum number of threads depending on whether an API Key is present
     max_threads = 9 if final_api_key else 3
     if threads > max_threads:
-        warning_msg = f"[WARNING] 线程数 {threads} 超过限制 {max_threads}，已自动调整为 {max_threads}"
+        warning_msg = f"[WARNING] Thread count {threads} exceeds the limit of {max_threads}; adjusted to {max_threads}"
         if not quiet:
             typer.secho(warning_msg, fg=typer.colors.YELLOW)
         else:
@@ -661,7 +667,7 @@ def cli(
 
 
 if __name__ == "__main__":
-    # 兼容-h 为 --help
+    # Treat -h as --help for compatibility
     if "-h" in sys.argv and "--help" not in sys.argv:
         sys.argv[sys.argv.index("-h")] = "--help"
 
