@@ -3,6 +3,12 @@
 A multi-threaded utility for batch retrieval of metadata from the NCBI Sequence Read Archive (SRA). Built on top of **pysradb**, it processes lists of SRR accessions and outputs structured CSV reports. The tool is intended to be flexible, working either as a standalone **Command Line Interface** (CLI) or as an importable **Python module**. It includes practical features such as rate limiting that follows NCBI usage guidelines and automatic retries to improve robustness under unstable network conditions.
 
 ---
+## Platform Support
+
+This tool is implemented in Python and built on top of **pysradb**. It supports both **Windows** and **Linux** environments.  
+In theory, it should also work on **macOS**, but this platform has not been tested.
+
+---
 
 ## Installation
 ### 1. Get the Source Code
@@ -71,6 +77,8 @@ You can run the tool directly from the command line using [SRA-Fetcher.py](/SRA-
         -r, --replace           Replace existing output files (overwrite). By default the tool will not overwrite to avoid accidental data loss.
 
         -h, --help              Show this help message and exit.
+
+---
 
 ### Examples:
 
