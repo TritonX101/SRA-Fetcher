@@ -492,6 +492,22 @@ def process_srr_file(
     # Use a stable sort
     merged = merged.sort_values(sort_cols, kind="mergesort").reset_index(drop=True)
 
+    # Filter: remove rows where run_accession != __input_srr__
+    if "run_accession" in merged.columns and "__input_srr__" in merged.columns:
+        initial_count = len(merged)
+        # Keep only rows where run_accession matches __input_srr__ or run_accession is NaN/None
+        merged = merged[
+            (merged["run_accession"] == merged["__input_srr__"]) | 
+            (merged["run_accession"].isna())
+        ].reset_index(drop=True)
+        filtered_count = len(merged)
+        if not quiet and filtered_count < initial_count:
+            typer.secho(
+                f"[INFO] Filtered out {initial_count - filtered_count} mismatched rows "
+                f"(run_accession != __input_srr__)",
+                fg=typer.colors.CYAN,
+            )
+
     # Remove internal sort helper column
     merged = merged.drop(columns=["__input_order__"], errors="ignore")
 
