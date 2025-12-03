@@ -54,34 +54,37 @@ You can run the tool directly from the command line using [SRA-Fetcher.py](/SRA-
 
     Options:
 
-    -f, --file PATH         Path to file containing SRR accessions (one per line).
+        -f, --file PATH         Path to file containing SRR accessions (one per line).
 
-    -o, --output PATH       Output file path or directory. If a directory is provided, output files will be written there. Defaults to the input file's directory with a timestamped filename.
+        -o, --output PATH       Output file path or directory. If a directory is provided, output files will be written there. Defaults to the input file's directory with a timestamped filename.
 
-    -t, --threads INT       Number of concurrent worker threads. Default: 1
+        -t, --threads INT       Number of concurrent worker threads. Default: 1
 
-    -d, --detailed          Fetch detailed metadata (may  include download URLs and additional fields; some fields can be malformed for certain accessions).
+        -d, --detailed          Fetch detailed metadata (may  include download URLs and additional fields; some fields can be malformed for certain accessions).
 
-    -a, --api TEXT          NCBI API key (also honored from environment variable NCBI_API_KEY). When provided, increases request quota.
+        -a, --api TEXT          NCBI API key (also honored from environment variable NCBI_API_KEY). When provided, increases request quota.
 
-    -v, --verbose           Enable verbose logging (progress and debug information).
+        -v, --verbose           Enable verbose logging (progress and debug information).
 
-    -q, --quiet             Quiet mode — only show warnings and errors.
+        -q, --quiet             Quiet mode — only show warnings and errors.
 
-    -r, --replace           Replace existing output files (overwrite). By default the tool will not overwrite to avoid accidental data loss.
+        -r, --replace           Replace existing output files (overwrite). By default the tool will not overwrite to avoid accidental data loss.
 
-    -h, --help              Show this help message and exit.
+        -h, --help              Show this help message and exit.
 
 ### Examples:
 
 Basic usage (single thread):
-```SRA-Fetcher.py -f test/SRR_Test_list.txt```
+
+    SRA-Fetcher.py -f test/SRR_Test_list.txt
 
 Save output to a specific directory and use 3 threads:
-```SRA-Fetcher.py -f test/SRR_Test_list.txt -o test/SRR_Result.csv -t 3```
+
+    SRA-Fetcher.py -f test/SRR_Test_list.txt -o test/SRR_Result.csv -t 3
 
 Output using detailed mode：
-```SRA-Fetcher.py -f test/SRR_Test_list.txt -d```
+
+    SRA-Fetcher.py -f test/SRR_Test_list.txt -d
 
 Use an API key from env (The program will automatically read the NCBI_API_KEY from environment variables.):
 
@@ -100,7 +103,8 @@ Use an API key from env (The program will automatically read the NCBI_API_KEY fr
     SRA-Fetcher.py -f test/SRR_Test_list.txt -a [YOUR NCBI API KEY]
 
 Overwrite existing output and run quietly:
-```SRA-Fetcher.py -f test/SRR_Test_list.txt -r -q```
+
+    SRA-Fetcher.py -f test/SRR_Test_list.txt -r -q
 
 
 
